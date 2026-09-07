@@ -1,0 +1,19 @@
+# 构建产物（exe 超过 GitHub 100MB 限制，且可由 sentinel.spec 重新打包）
+build/
+dist/
+build_log.txt
+
+# 本地运行生成
+config.json
+sentinel.log
+
+# Python
+__pycache__/
+*.pyc
+
+# 临时/日志
+*.log
+tests/_*.txt
+
+# 本地工具元数据
+.zcode/
