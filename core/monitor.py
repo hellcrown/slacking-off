@@ -24,6 +24,7 @@ class MonitorWorker(QThread):
     triggered = pyqtSignal(str)             # 触发原因（"face_count"）
     recovered = pyqtSignal()                # 人数回落，可执行恢复动作
     status_message = pyqtSignal(str)        # 日志
+    failed = pyqtSignal(str)                # 致命错误（弹窗提示并停止）
 
     def __init__(self, get_config: Callable[[], AppConfig], parent=None):
         super().__init__(parent)
@@ -38,10 +39,12 @@ class MonitorWorker(QThread):
 
     def run(self):
         cfg = self._get_config()
-        if not self._open_camera(cfg.camera_index):
-            return
         try:
+            if not self._open_camera(cfg.camera_index):
+                return
             self._loop()
+        except Exception as e:
+            self.failed.emit(f"监测线程异常: {e}")
         finally:
             self._release_camera()
 
@@ -59,7 +62,14 @@ class MonitorWorker(QThread):
                 self.status_message.emit(f"摄像头 {index} 已打开")
                 return True
             time.sleep(0.1)
-        self.status_message.emit(f"摄像头 {index} 无法读取画面")
+        self.failed.emit(
+            f"摄像头 {index} 打不开或无画面\n\n"
+            "请依次检查：\n"
+            "1. 是否被其他程序占用（微信视频/腾讯会议/直播软件）\n"
+            "2. Windows 设置 → 隐私和安全性 → 摄像头 → "
+            "允许桌面应用访问摄像头\n"
+            "3. 设置里点“测试摄像头”换一个可用编号\n"
+            "4. 笔记本的 Fn 摄像头开关或物理滑盖")
         self._release_camera()
         return False
 
@@ -90,7 +100,7 @@ class MonitorWorker(QThread):
                     self._release_camera()
                     time.sleep(CAMERA_REOPEN_DELAY)
                     if not self._stop and not self._open_camera(cfg.camera_index):
-                        time.sleep(CAMERA_REOPEN_DELAY)
+                        break  # 打开失败已发 failed 信号，结束线程
                 else:
                     time.sleep(0.05)
                 continue

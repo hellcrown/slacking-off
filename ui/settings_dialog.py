@@ -1,20 +1,42 @@
 # -*- coding: utf-8 -*-
 """设置对话框：检测参数 / 动作列表 / 热键。保存时写回传入的 AppConfig。"""
+import time
 from typing import List
 
+import cv2
+from PyQt5.QtCore import Qt, QThread, pyqtSignal
 from PyQt5.QtWidgets import (
     QDialog, QVBoxLayout, QHBoxLayout, QFormLayout, QGroupBox, QLabel,
     QSpinBox, QDoubleSpinBox, QCheckBox, QComboBox, QLineEdit,
     QDialogButtonBox, QTableWidget, QTableWidgetItem, QPushButton,
     QHeaderView, QAbstractItemView, QMessageBox, QKeySequenceEdit,
 )
-from PyQt5.QtCore import Qt
 
 from core.config import (AppConfig, ActionItem, ACTION_LABELS,
                          ACTION_TARGET_HINTS, ACTION_REVERSIBLE,
                          ACT_CLOSE_PROCESS, ACT_MINIMIZE, ACT_BOTTOM,
                          ACT_FRONT, ACT_COMMAND)
 from .window_picker import WindowPickerDialog
+
+
+class CameraProbe(QThread):
+    """后台探测 0-3 号摄像头能否出画面，避免卡住界面。"""
+    done = pyqtSignal(list)  # [(index, ok), ...]
+
+    def run(self):
+        results = []
+        for idx in range(4):
+            cap = cv2.VideoCapture(idx, cv2.CAP_DSHOW)
+            ok = False
+            if cap.isOpened():
+                for _ in range(8):
+                    ok, _frame = cap.read()
+                    if ok:
+                        break
+                    time.sleep(0.1)
+            cap.release()
+            results.append((idx, bool(ok)))
+        self.done.emit(results)
 
 
 class SettingsDialog(QDialog):
@@ -33,7 +55,18 @@ class SettingsDialog(QDialog):
         self.camera_index = QSpinBox()
         self.camera_index.setRange(0, 9)
         self.camera_index.setValue(cfg.camera_index)
-        f1.addRow("摄像头编号", self.camera_index)
+        cam_row = QHBoxLayout()
+        cam_row.addWidget(self.camera_index)
+        self.cam_test_btn = QPushButton("测试摄像头")
+        self.cam_test_btn.setToolTip("逐个探测 0-3 号摄像头能否出画面（探测期间请勿开始监测）")
+        self.cam_test_btn.clicked.connect(self._probe_cameras)
+        cam_row.addWidget(self.cam_test_btn)
+        cam_row.addStretch(1)
+        f1.addRow("摄像头编号", cam_row)
+
+        self.cam_test_label = QLabel("")
+        self.cam_test_label.setStyleSheet("color: gray;")
+        f1.addRow("", self.cam_test_label)
 
         self.face_threshold = QSpinBox()
         self.face_threshold.setRange(1, 5)
@@ -137,6 +170,26 @@ class SettingsDialog(QDialog):
 
         for act in cfg.actions:
             self._add_row(act)
+
+    # ---------- 摄像头探测 ----------
+    def _probe_cameras(self):
+        self.cam_test_btn.setEnabled(False)
+        self.cam_test_btn.setText("测试中…（约几秒）")
+        self.cam_test_label.setText("")
+        self._probe = CameraProbe()
+        self._probe.done.connect(self._probe_done)
+        self._probe.start()
+
+    def _probe_done(self, results):
+        self.cam_test_btn.setEnabled(True)
+        self.cam_test_btn.setText("测试摄像头")
+        ok_list = [str(i) for i, ok in results if ok]
+        bad_list = [str(i) for i, ok in results if not ok]
+        text = "可用编号: " + ("、".join(ok_list) if ok_list else "无！") \
+            + ("　不可用: " + "、".join(bad_list) if bad_list else "")
+        if ok_list:
+            text += f"　（当前设置 {self.camera_index.value()} 号）"
+        self.cam_test_label.setText(text)
 
     # ---------- 动作表格 ----------
     def _add_row(self, act: ActionItem = None):

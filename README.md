@@ -79,10 +79,15 @@ E:\anaconda\anaconda\python.exe -m pip install -r requirements.txt
 
 ## 故障排查
 
-- **摄像头打不开 / 日志报"无法读取画面"**：
-  1. 检查笔记本是否有摄像头物理开关（Fn 键）；
-  2. 设备管理器 → 照相机 → 看设备是否带感叹号；
-  3. 本机曾因 **360 摄像头防护残留的注册表过滤器**导致所有摄像头报"代码 19"。
+- **点了"开始监测"没反应**：程序会弹窗显示具体原因（旧版本只写日志，请更新到新版）。
+  详见 exe 旁的 `sentinel.log`。
+- **摄像头打不开 / 提示无画面**：
+  1. 设置里点"**测试摄像头**"，自动探测 0-3 号哪个能用；
+  2. 检查是否被其他程序占用（微信视频、腾讯会议、直播/美颜软件）；
+  3. Windows 设置 → 隐私和安全性 → 摄像头 → 打开"允许桌面应用访问摄像头"；
+  4. 笔记本 Fn 摄像头开关或物理滑盖；
+  5. 设备管理器 → 照相机 → 看设备是否带感叹号；
+  6. 本机曾因 **360 摄像头防护残留的注册表过滤器**导致所有摄像头报"代码 19"。
      修复方法（管理员 PowerShell）：备份并删除
      `HKLM\SYSTEM\CurrentControlSet\Control\Class\{ca3e7ab9-b4c3-4ae6-8251-579ef933890f}`
      中 `UpperFilters` 里的 `360Camera` 项（保留 `ksthunk`），再重启设备。
@@ -90,6 +95,13 @@ E:\anaconda\anaconda\python.exe -m pip install -r requirements.txt
 - **热键注册失败**：说明被其他软件占用，换一个组合。
 - **动作没执行**：查看主窗口日志；最常见原因是目标关键词没有匹配到任何窗口标题
   （标题会变化，用设置里的"从当前窗口选择目标"重新选一次）。
+
+### 兼容性说明
+
+- 人脸模型通过**内存加载**，中文 Windows 用户名（如 `C:\Users\陈帅父亲\...`）、
+  中文安装路径均可正常运行（v1.1 修复：旧版在中文用户名机器上会因临时目录
+  路径含中文而启动监测失败）。
+- 仅支持 Windows 10/11。
 
 ## 项目结构
 
@@ -115,4 +127,7 @@ tests/                  集成测试（动作链路、端到端触发、exe 验�
 E:\anaconda\anaconda\python.exe tests\test_actions.py        # 窗口/进程动作全链路
 E:\anaconda\anaconda\python.exe tests\test_integration.py    # 摄像头->触发->恢复端到端
 E:\anaconda\anaconda\python.exe tests\test_app_real.py       # 真实 GUI 应用验证
+E:\anaconda\anaconda\python.exe tests\test_settings_ok.py    # 设置保存回归
+E:\anaconda\anaconda\python.exe tests\test_unicode_paths.py  # 中文用户名/路径回归
+E:\anaconda\anaconda\python.exe tests\test_exe.py            # exe 验收（需先打包）
 ```

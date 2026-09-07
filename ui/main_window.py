@@ -10,7 +10,7 @@ from PyQt5.QtCore import Qt, QTimer
 from PyQt5.QtGui import QImage, QPixmap, QPainter, QColor, QIcon
 from PyQt5.QtWidgets import (
     QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, QLabel, QPushButton,
-    QPlainTextEdit, QSystemTrayIcon, QMenu, QAction,
+    QPlainTextEdit, QSystemTrayIcon, QMenu, QAction, QMessageBox,
 )
 
 from core.config import AppConfig, save_config
@@ -188,13 +188,22 @@ class MainWindow(QMainWindow):
             if self._last_camera_index == self.cfg.camera_index:
                 return
             self.stop_monitoring()
+        try:
+            self.worker = MonitorWorker(self.get_config)
+        except Exception as e:
+            self.worker = None
+            self.append_log(f"[错误] 初始化人脸检测失败: {e}")
+            QMessageBox.critical(self, "无法开始监测",
+                                 f"初始化人脸检测失败：\n{e}\n\n"
+                                 "详情见程序目录下 sentinel.log")
+            return
         self._last_camera_index = self.cfg.camera_index
-        self.worker = MonitorWorker(self.get_config)
         self.worker.frame_ready.connect(self.on_frame)
         self.worker.face_count_changed.connect(self.on_face_count)
         self.worker.triggered.connect(self.run_actions)
         self.worker.recovered.connect(self.on_recovered)
         self.worker.status_message.connect(self.append_log)
+        self.worker.failed.connect(self.on_worker_failed)
         self.worker.start()
         self._set_state("running")
         self.toggle_btn.setText("停止监测")
@@ -251,6 +260,17 @@ class MainWindow(QMainWindow):
         self.append_log("<<< 人数已回落，执行恢复")
         for line in self.executor.recover():
             self.append_log("    " + line)
+
+    def on_worker_failed(self, message: str):
+        """监测线程致命错误：停止监测并明确告知用户，绝不再静默。"""
+        self.append_log(f"[错误] {message}")
+        self.stop_monitoring()
+        QMessageBox.critical(self, "监测出错",
+                             f"{message}\n\n常见原因：\n"
+                             "1. 摄像头被其他程序（微信/会议/直播软件）占用\n"
+                             "2. Windows 隐私设置禁止桌面应用访问摄像头\n"
+                             "3. 摄像头编号不对，可在设置里点“测试摄像头”\n"
+                             "详情见程序目录下 sentinel.log")
 
     # ================= 设置 =================
     def open_settings(self):

@@ -21,30 +21,22 @@ def _resource_root() -> str:
 MODEL_PATH = os.path.join(_resource_root(), "models", "face_detection_yunet_2023mar.onnx")
 
 
-def _loadable_model_path() -> str:
-    """OpenCV(C++) 在 Windows 上无法读取含非 ASCII 字符的路径，
-    必要时把模型复制到英文临时目录再加载。"""
-    try:
-        MODEL_PATH.encode("ascii")
-        return MODEL_PATH
-    except UnicodeEncodeError:
-        import shutil
-        import tempfile
-        tmp = os.path.join(tempfile.gettempdir(), "sentinel_yunet.onnx")
-        if not os.path.exists(tmp) or os.path.getsize(tmp) != os.path.getsize(MODEL_PATH):
-            shutil.copyfile(MODEL_PATH, tmp)
-        return tmp
+def _load_model_buffer() -> np.ndarray:
+    """把模型读进内存。OpenCV 的 C++ 层读不了含非 ASCII 字符的文件路径
+    （如中文用户名的 Temp 目录、中文安装目录），内存加载则完全不受路径影响。"""
+    if not os.path.exists(MODEL_PATH):
+        raise RuntimeError(
+            f"未找到人脸模型文件: {MODEL_PATH}\n"
+            "请从 opencv_zoo 下载 face_detection_yunet_2023mar.onnx 放入 models/ 目录"
+        )
+    return np.fromfile(MODEL_PATH, dtype=np.uint8)  # np.fromfile 支持任意 Unicode 路径
 
 
 class FaceDetector:
     def __init__(self, score_threshold: float = 0.6, min_face_size: int = 80):
-        if not os.path.exists(MODEL_PATH):
-            raise RuntimeError(
-                f"未找到人脸模型文件: {MODEL_PATH}\n"
-                "请从 opencv_zoo 下载 face_detection_yunet_2023mar.onnx 放入 models/ 目录"
-            )
         self._det = cv2.FaceDetectorYN.create(
-            _loadable_model_path(), "", (320, 320), score_threshold=score_threshold,
+            "onnx", _load_model_buffer(), np.array([], dtype=np.uint8),
+            (320, 320), score_threshold=score_threshold,
             nms_threshold=0.3, top_k=5000,
         )
         self._input_size = (0, 0)
